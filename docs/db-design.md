@@ -2,7 +2,7 @@
 
 Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢を持つ列は text + CHECK 制約。
 
-実装は `supabase/migrations/` の4ファイル（テーブル / 権限関数・RLS・列権限 / 関数・トリガー / 初期データ）。動作確認は `supabase/tests/db_smoke_test.sql`。
+実装は `supabase/migrations/` の5ファイル（テーブル / 権限関数・RLS・列権限 / 関数・トリガー / 初期データ / 出題リストの保存と結果・進捗の関数）。適用済みの migration は編集せず、変更は新しいファイルで追加する。動作確認は `supabase/tests/db_smoke_test.sql`。
 
 ## 設計方針
 
@@ -29,7 +29,7 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 | 課金 | AI出題は有料のみ | plans.can_use_ai で判定する。生成した問題は questions に source = ai・作成者本人のみ閲覧可で保存し、利用量を ai_generations に記録する | plans.can_use_ai / ai_generations |
 | 安全 | 正解をブラウザに送らない | question_choices.is_correct と question_answer_keys はクライアント（anon / authenticated。管理者も含む）から読めないようにし、採点はサーバー側の関数 submit_answer で行う。問題の管理画面は Secret key を使うサーバー側で作る | 列単位の権限 + 関数 |
 | 安全 | 他人のデータを読めない | 全テーブルで RLS を有効にする。学習データは本人の行だけ読める。書き込みはサーバー側の関数に限定する。Supabase が新しいテーブルに付ける anon / authenticated の全権限はいったん外し、必要な権限だけを付け直す | RLS・権限シート |
-| 安全 | ユーザーを削除できる | auth.users の削除で profiles が消え、本人の設定・課金・学習データ（user_settings / subscriptions / attempts / answers / 進捗 / daily_activity / ai_generations）も連動削除する。作成者の列（questions.created_by / question_sets.owner_id）は NULL にする | 各テーブルの FK |
+| 安全 | ユーザーを削除できる | auth.users の削除で profiles が消え、本人の設定・課金・学習データ（user_settings / subscriptions / attempts / attempt_questions / answers / 進捗 / daily_activity / ai_generations）も連動削除する。作成者の列（questions.created_by / question_sets.owner_id）は NULL にする | 各テーブルの FK |
 
 ## テーブル一覧
 
@@ -50,6 +50,7 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 | 問題 | question_sets | 問題集（タイトル、分類、無料公開か） | 管理者（将来：ユーザー） | ◎ |
 | 問題 | question_set_items | 問題集と問題の対応、出題順 | 管理者（将来：ユーザー） | ◎ |
 | 学習 | attempts | 1回のチャレンジ（どの問題集を、どの設定で、いつ） | サーバー関数 start_attempt | ◎ |
+| 学習 | attempt_questions | 1回の挑戦の出題リスト（どの問題を、どの順で出すか）。途中再開と回答できる問題の判定に使う | サーバー関数 start_attempt | ◎ |
 | 学習 | answers | 1問ごとの回答（選んだ選択肢、正誤、日時）。学習履歴の正本 | サーバー関数 submit_answer | ◎ |
 | 進捗 | user_set_question_progress | ユーザー × 問題集 × 問題ごとの累計（重複判定「問題集ごと」用） | サーバー関数 submit_answer | ◎ |
 | 進捗 | user_question_progress | ユーザー × 問題ごとの累計（重複判定「同じ問題」用） | サーバー関数 submit_answer | ◎ |
@@ -246,6 +247,17 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 | started_at | timestamptz | × | now() |  | 開始日時 |
 | completed_at | timestamptz | ○ |  |  | 完了日時。NULL = 途中。answered_count が planned_count に達したときに submit_answer が設定する |
 
+### attempt_questions
+
+| カラム | 型 | NULL | 既定値 | キー・制約 | 説明 |
+|---|---|---|---|---|---|
+| attempt_id | uuid | × |  | PK(1), FK → attempts（連動削除） |  |
+| user_id | uuid | × |  | FK → profiles（連動削除）, INDEX | RLS で本人の行を絞るための控え |
+| question_id | uuid | × |  | PK(2), FK → questions, INDEX | 出題する問題 |
+| position | integer | × |  | CHECK: 1以上, UNIQUE(attempt_id, position) | 出題順 |
+
+start_attempt が作成時に書き、以後は変更しない。行数は attempts.planned_count と一致する。この表ができる前に作られた挑戦には行がないため、未完了でも続きに回答できない。
+
 ### answers
 
 | カラム | 型 | NULL | 既定値 | キー・制約 | 説明 |
@@ -352,6 +364,7 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 | question_sets | published かつ public のもの／自分が作成したもの | 管理者 | 管理者 | 管理者 | 無料ユーザーにも一覧は見せ、解けるかどうかは start_attempt で判定する（有料の問題集に鍵マークを出せる） |
 | question_set_items | question_sets と同じ条件 | 管理者 | 管理者 | 管理者 |  |
 | attempts | 本人の行 | 関数 start_attempt のみ | 関数のみ | 不可 |  |
+| attempt_questions | 本人の行 | 関数 start_attempt のみ | 不可 | 不可 |  |
 | answers | 本人の行 | 関数 submit_answer のみ | 不可 | 不可 | ★追記のみ。書き換え・削除を許さない（ユーザー削除時の連動削除は除く） |
 | user_set_question_progress | 本人の行 | 関数のみ | 関数のみ | 不可 |  |
 | user_question_progress | 本人の行 | 関数のみ | 関数のみ | 不可 |  |
@@ -394,9 +407,11 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 | validate_question | 制約トリガー（DEFERRABLE INITIALLY DEFERRED・security definer） | questions の追加・status / format の変更時、question_choices / question_answer_keys の追加・変更・削除時（コミット時にまとめて検査） | published の問題だけを対象に、形式ごとの整合性を検査する。四択（single_choice）は選択肢4つ・正解1つ、二択（true_false）は選択肢2つ・正解1つ、複数選択（multiple_choice）は選択肢2つ以上・正解1つ以上、選択式以外は question_answer_keys があること。公開中の問題の選択肢を変えたときも検査する。管理者も読めない is_correct を読むため security definer |
 | handle_new_user | トリガー（security definer） | 認証ユーザーの作成時 | profiles、user_settings、subscriptions（plan_key = free）を自動で作る。登録時は auth.uid() が NULL のため本人確認はできない。代わりに EXECUTE 権限を外し、トリガー以外からは呼べないようにする |
 | validate_timezone | トリガー | user_settings の追加・timezone の変更時 | pg_timezone_names にない名前を拒否する（1日の区切りの計算が失敗しないように） |
-| start_attempt(p_question_set_id, p_mode = 'normal', p_skip_cleared = true) | 関数（security definer） | 問題集の「挑戦する」「復習する」を押したとき | ⓪auth.uid() で本人を確定し、利用停止でないか確認 ①プランでその問題集を解けるか確認 ②ユーザーの設定（重複範囲・クリア条件）を読む ③出題リストを作る（normal：問題集の published の問題を出題順に並べ、p_skip_cleared が true ならクリア済みを省く。review：get_review_questions と同じ抽出。問題集は省略可）④attempts を作成し、{ attempt_id, question_ids, planned_count, skipped_count } を返す。★mode は normal / review だけ対応し、exam / srs / ai は「未対応」のエラーにする。出題リストは保存しない |
-| submit_answer(p_attempt_id, p_question_id, p_selected_choice_id, p_response, p_time_ms) | 関数（security definer） | 1問回答するたび | ①auth.uid() で本人の挑戦か、利用停止でないか、未完了・制限時間内か、問題がその挑戦の問題集に含まれる published の問題か（問題集のない挑戦では、その問題を解けるか）、未回答かを確認 ②1日の上限を確認（plans.daily_question_limit が NULL でないプランだけ。日付は user_settings.timezone で区切る）③形式に応じて採点（★single_choice のみ対応。他の形式は「未対応」のエラー）④answers に追加 ⑤進捗3テーブルと daily_activity、attempts の集計を更新（知識項目は、その問題に付いているすべての項目に同じ正誤を記録する。問題集のない挑戦では user_set_question_progress は更新しない。answered_count が planned_count に達したら completed_at と score を設定する）⑥{ answer_id, attempt_completed, is_correct, correct_choice_id, explanation } を返す（feedback_mode が deferred のときは正誤・正解・解説を返さない）。★①〜⑤は1つのトランザクションで行う。同じ挑戦への同時回答は attempts の行ロックで直列化する |
+| start_attempt(p_question_set_id, p_mode = 'normal', p_skip_cleared = true) | 関数（security definer） | 問題集の「挑戦する」「復習する」を押したとき | ⓪auth.uid() で本人を確定し、利用停止でないか確認 ①プランでその問題集を解けるか確認 ②ユーザーの設定（重複範囲・クリア条件）を読む ③出題リストを作る（normal：問題集の published の問題を出題順に並べ、p_skip_cleared が true ならクリア済みを省く。review：get_review_questions と同じ抽出。問題集は省略可）④出題リストが空なら no_questions のエラーにし、挑戦を作らない ⑤attempts を作成し、出題リストを attempt_questions に保存して、{ attempt_id, question_ids, planned_count, skipped_count } を返す。★mode は normal / review だけ対応し、exam / srs / ai は「未対応」のエラーにする |
+| submit_answer(p_attempt_id, p_question_id, p_selected_choice_id, p_response, p_time_ms) | 関数（security definer） | 1問回答するたび | ①auth.uid() で本人の挑戦か、利用停止でないか、未完了・制限時間内か、問題がその挑戦の出題リスト（attempt_questions）に含まれるか、その問題集に含まれる published の問題か（問題集のない挑戦では、その問題を解けるか）、未回答かを確認 ②1日の上限を確認（plans.daily_question_limit が NULL でないプランだけ。日付は user_settings.timezone で区切る）③形式に応じて採点（★single_choice のみ対応。他の形式は「未対応」のエラー）④answers に追加 ⑤進捗3テーブルと daily_activity、attempts の集計を更新（知識項目は、その問題に付いているすべての項目に同じ正誤を記録する。問題集のない挑戦では user_set_question_progress は更新しない。answered_count が planned_count に達したら completed_at と score を設定する）⑥{ answer_id, attempt_completed, is_correct, correct_choice_id, explanation } を返す（feedback_mode が deferred のときは正誤・正解・解説を返さない）。★①〜⑤は1つのトランザクションで行う。同じ挑戦への同時回答は attempts の行ロックで直列化する |
 | get_review_questions(p_question_set_id = NULL) | 関数（security definer） | 「復習する」を押したとき | auth.uid() で本人を確定し、不正解があり未クリアの問題IDを、設定に応じた進捗テーブルから直近に回答した順に返す。set のときは問題集の指定が必須。knowledge のときは、未クリアの知識項目が付いた問題と、知識項目のない問題（同じ問題として判定）を返す。現在のプランで解ける問題だけに絞る |
+| get_attempt_result(p_attempt_id) | 関数（security definer） | 結果画面を表示するとき | auth.uid() で本人の挑戦か確認し、回答済みの問題について { question_id, question_position, question_body, explanation, selected_choice_id, selected_choice_body, correct_choice_id, correct_choice_body, is_correct, answered_at } を出題順に返す。★未回答の問題の正解は返さない。feedback_mode が deferred の挑戦は、完了するまで正誤・正解・解説を返さない。回答後にプランが変わって questions を読めなくなっても結果を表示できるよう、問題文と選択肢の文もここで返す |
+| get_set_progress(p_question_set_id) | 関数（security definer） | 問題集の詳細画面を表示するとき | auth.uid() で本人を確定し、問題集の published の問題数（total_count）と、現在の設定でクリア済みの数（cleared_count）を返す。判定は start_attempt の「クリア済みを省く」と同じ。一覧が見える問題集（published かつ public、または自分の問題集）だけが対象 |
 | category_proximity | 関数（security invoker） | 関連する問題集の表示など | 2つの分類の経路（path）が先頭から何階層一致するかを返す。例：language/english/vocabulary と language/english/grammar は 2階層一致＝近い / language/... と science/... は 0＝遠い |
 | set_category_path | トリガー | categories の追加・更新時 | 親の path に自分の slug をつなげて path と depth を設定する。自分自身や子孫を親にすると拒否する。path が変わったときは子の行も更新し、子孫まで再帰的に path を作り直す（cascade_category_path） |
 | set_updated_at | トリガー | 各テーブルの更新時 | updated_at を現在時刻にする |
@@ -406,7 +421,7 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 関数の共通方針
 
 - すべての関数で search_path を '' に固定し、スキーマ名つきで参照する。
-- クライアントから呼ぶ security definer 関数（start_attempt / submit_answer / get_review_questions）は、最初に auth.uid() で本人を確定し、本人のデータだけを扱う。実行権限は authenticated だけに付ける。
+- クライアントから呼ぶ security definer 関数（start_attempt / submit_answer / get_review_questions / get_attempt_result / get_set_progress）は、最初に auth.uid() で本人を確定し、本人のデータだけを扱う。実行権限は authenticated だけに付ける。
 - トリガー関数と内部の補助関数（is_cleared / user_plan / can_solve_set / can_access_question / is_question_cleared / review_question_ids / require_active_user）は、API に公開されない private スキーマに置き、EXECUTE 権限を外す。
 - エラーは message に識別子（例：daily_limit_reached / unsupported_format / unsupported_mode / question_set_not_accessible / user_not_active）、detail に日本語の説明を入れる。
 
@@ -530,8 +545,9 @@ Supabase（PostgreSQL）。全テーブルで RLS を有効にする。選択肢
 | 決定済み | 挑戦の完了 | 回答数が出題数（planned_count）に達したら submit_answer が完了にし、得点を計算する | 途中でやめた挑戦は completed_at が NULL のまま残る |
 | 未対応 | 模擬試験（feedback_mode = deferred） | answers.is_correct・進捗の last_is_correct・attempts.correct_count は本人が読めるため、試験中に正誤が分かってしまう。終了後に結果をまとめて返す関数もない | それまで start_attempt は exam / srs / ai を「未対応」のエラーにする。対応時は、未完了の deferred の挑戦の answers を RLS で隠す、進捗の更新を完了時にまとめる、結果を返す関数を足す、などを検討する |
 | 未対応 | 選択式以外の出題形式の採点 | submit_answer が採点するのは single_choice だけ | 他の形式は「未対応」のエラーを返す |
-| 未定 | 挑戦の途中再開 | 100問の問題集を途中でやめたとき、続きから再開できるようにするか | 今の設計でも「未回答の問題」を計算すれば再開可能。出題順を固定したい場合は出題リストを保存するテーブルを足す |
-| 未定 | 選択肢のシャッフル | 毎回、選択肢の順番を入れ替えるか | 入れ替える場合も DB の変更は不要（表示時に並べ替える） |
+| 決定済み | 挑戦の途中再開 | 途中でやめた挑戦も、続きから再開できるようにする | start_attempt が出題リストを attempt_questions に保存し、出題リストのうち未回答で出題順が最初の問題を次に出す。出題する問題はサーバー側で決め、クライアントからは指定させない |
+| 決定済み | 出題する問題がないとき | すべてクリア済みなどで出題リストが空なら、start_attempt は no_questions のエラーにして挑戦を作らない | 完了しない空の挑戦が残らないようにする |
+| 決定済み | 選択肢のシャッフル | 入れ替えず、position の順に表示する | 入れ替える場合も DB の変更は不要（表示時に並べ替える） |
 | 未定 | 拡張機能の優先順位 | 「将来テーブル」シートの優先度は仮の案です。どの機能から作るかを決めてください | ブックマーク、忘却曲線による復習、累計の控え（user_stats）は、今の問題集の機能と相性がよく早めに足しやすい |
 | 未定 | 問題を修正したときの扱い | 誤字の修正は版を上げず、正解や意味が変わる修正は版を上げる運用を想定 | 版を上げたとき、過去の進捗（クリア済みなど）を引き継ぐかリセットするかは、実装時に決める |
 | 要確認 | コミュニティ機能と未成年の利用 | 投稿・ランキング・フォローなど、利用者同士が見える機能を入れるときは、通報・ブロック・公開範囲の設定を同時に入れる | 利用規約とプライバシーポリシーにも反映が必要 |

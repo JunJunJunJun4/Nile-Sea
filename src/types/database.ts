@@ -85,6 +85,37 @@ isOneToOne: false
       referencedColumns: ["id"]
     }
                   ]
+                },"attempt_questions": {
+                  Row: {
+                    "attempt_id": string,"position": number,"question_id": string,"user_id": string
+                  }
+                  Insert: {
+                    "attempt_id": string,"position": number,"question_id": string,"user_id": string
+                  }
+                  Update: {
+                    "attempt_id"?: string,"position"?: number,"question_id"?: string,"user_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "attempt_questions_attempt_id_fkey"
+      columns: ["attempt_id"]
+isOneToOne: false
+      referencedRelation: "attempts"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "attempt_questions_question_id_fkey"
+      columns: ["question_id"]
+isOneToOne: false
+      referencedRelation: "questions"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "attempt_questions_user_id_fkey"
+      columns: ["user_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    }
+                  ]
                 },"attempts": {
                   Row: {
                     "answered_count": number,"clear_mode": string,"clear_threshold": number,"completed_at": string | null,"correct_count": number,"dedupe_scope": string,"expires_at": string | null,"feedback_mode": string,"id": string,"mode": string,"planned_count": number,"question_set_id": string | null,"score": number | null,"skipped_count": number,"started_at": string,"time_limit_sec": number | null,"user_id": string
@@ -500,8 +531,18 @@ isOneToOne: true
 "category_proximity":
 { Args: { "p_category_a": string,"p_category_b": string }; Returns: number
                            },
+"get_attempt_result":
+{ Args: { "p_attempt_id": string }; Returns: {
+              "answered_at": string,"correct_choice_body": string,"correct_choice_id": string,"explanation": string,"is_correct": boolean,"question_body": string,"question_id": string,"question_position": number,"selected_choice_body": string,"selected_choice_id": string
+            }[]
+                           },
 "get_review_questions":
 { Args: { "p_question_set_id"?: string }; Returns: (string)[]
+                           },
+"get_set_progress":
+{ Args: { "p_question_set_id": string }; Returns: {
+              "cleared_count": number,"total_count": number
+            }[]
                            },
 "is_active_user":
 { Args: Record<PropertyKey, never>; Returns: boolean

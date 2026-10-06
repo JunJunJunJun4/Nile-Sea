@@ -47,8 +47,12 @@ export async function updateSession(request: NextRequest) {
   return supabaseResponse;
 }
 
+const PROTECTED_PATHS = ["/dashboard", "/sets", "/attempts"];
+
 function isProtectedPath(pathname: string) {
-  return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  return PROTECTED_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
 }
 
 function isGuestOnlyPath(pathname: string) {

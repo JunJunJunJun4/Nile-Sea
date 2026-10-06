@@ -1,8 +1,10 @@
+import { BookOpenIcon } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { logout } from "@/app/auth/actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "ダッシュボード" };
@@ -20,6 +22,13 @@ export default async function DashboardPage() {
       <p className="text-sm">
         ログイン中：<span className="font-medium">{data.claims.email}</span>
       </p>
+      <Link
+        href="/sets"
+        className={buttonVariants({ size: "lg", className: "w-full max-w-xs" })}
+      >
+        <BookOpenIcon data-icon="inline-start" />
+        問題集を解く
+      </Link>
       <form action={logout}>
         <Button type="submit" variant="outline">
           ログアウト

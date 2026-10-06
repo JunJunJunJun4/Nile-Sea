@@ -4,16 +4,19 @@
 -- - 全体を1つのトランザクションで実行し、最後に rollback するのでデータは残らない。
 -- - エラーが出ても止まらない（ON_ERROR_STOP 0）。「--- EXPECT xxx」の直後に、そのエラー xxx が出ていれば正常。
 --   「(expect n)」のついた行は、件数が n になっていれば正常。
+-- - seed.sql のデータや既存のユーザーが入っていても結果が変わらないよう、件数はこのテストで作るデータ
+--   （ユーザー 00000000-…-00a / 00b、問題集 20000000-…、問題 30000000-…）だけを数える。
 -- - pgTAP 形式ではないため、supabase test db では実行しない。
 \set ON_ERROR_STOP 0
 \set VERBOSITY terse
+\set test_users '''00000000-0000-0000-0000-00000000000a'', ''00000000-0000-0000-0000-00000000000b'''
 begin;
 -- users
 insert into auth.users (id, email) values
  ('00000000-0000-0000-0000-00000000000a','admin@x'),
  ('00000000-0000-0000-0000-00000000000b','free@x');
 update public.profiles set role='admin' where id='00000000-0000-0000-0000-00000000000a';
-select count(*) as profiles, (select count(*) from public.subscriptions) subs, (select count(*) from public.user_settings) settings from public.profiles;
+select 'test users rows (expect 2, 2, 2)' t, count(*) as profiles, (select count(*) from public.subscriptions where user_id in (:test_users)) subs, (select count(*) from public.user_settings where user_id in (:test_users)) settings from public.profiles where id in (:test_users);
 select path, depth from public.categories where depth > 1;
 
 insert into public.knowledge_items (id, kind, label, normalized_label) values
@@ -48,7 +51,7 @@ insert into public.question_set_items values
  ('20000000-0000-0000-0000-000000000001','30000000-0000-0000-0000-000000000002',2),
  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000002',1),
  ('20000000-0000-0000-0000-000000000002','30000000-0000-0000-0000-000000000004',2);
-select title, question_count from public.question_sets order by title;
+select 'test sets (expect free set 2, paid set 2)' t, title, question_count from public.question_sets where id::text like '20000000-%' order by title;
 set constraints all immediate;
 set constraints all deferred;
 
@@ -66,13 +69,13 @@ set constraints all deferred;
 
 set local role authenticated;
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000b","role":"authenticated"}',true) \g /dev/null
-select 'free sees questions (expect 2: Q1,Q2)' t, count(*) from public.questions;
-select 'free sees sets (expect 2)' t, count(*) from public.question_sets;
+select 'free sees questions (expect 2: Q1,Q2)' t, count(*) from public.questions where id::text like '30000000-%';
+select 'free sees sets (expect 2)' t, count(*) from public.question_sets where id::text like '20000000-%';
 \echo '--- EXPECT permission denied (is_correct)'
 savepoint a; select is_correct from public.question_choices limit 1; rollback to a;
 \echo '--- EXPECT permission denied (answer_keys)'
 savepoint b; select * from public.question_answer_keys; rollback to b;
-select 'choices visible (expect 8)' t, count(*) from (select id, body from public.question_choices) x;
+select 'choices visible (expect 8)' t, count(*) from (select id, body from public.question_choices where question_id::text like '30000000-%') x;
 \echo '--- EXPECT permission denied (role update)'
 savepoint c; update public.profiles set role='admin' where id=auth.uid(); rollback to c;
 update public.profiles set display_name='me' where id=auth.uid();
@@ -83,6 +86,10 @@ savepoint e; select public.start_attempt('20000000-0000-0000-0000-000000000002')
 select public.start_attempt('20000000-0000-0000-0000-000000000001') as att \gset
 \echo :att
 select (:'att'::jsonb->>'attempt_id') as aid \gset
+select 'attempt_questions saved (expect 2)' t, count(*) from public.attempt_questions where attempt_id = :'aid';
+\echo '--- EXPECT permission denied (attempt_questions insert)'
+savepoint d2; insert into public.attempt_questions values (:'aid', auth.uid(), '30000000-0000-0000-0000-000000000004', 3); rollback to d2;
+select 'result before answering (expect 0)' t, count(*) from public.get_attempt_result(:'aid');
 select public.submit_answer(:'aid', '30000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000012', null, 4200);
 \echo '--- EXPECT already_answered'
 savepoint f; select public.submit_answer(:'aid', '30000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000011'); rollback to f;
@@ -96,9 +103,22 @@ select knowledge_item_id, correct_count, wrong_count, current_streak from public
 select question_id, correct_count, wrong_count, current_streak from public.user_question_progress;
 select count(*) set_prog from public.user_set_question_progress;
 select activity_date, answered_count, correct_count, study_seconds from public.daily_activity;
+select 'result rows (expect 2: Q1 wrong / correct 11, Q2 correct / correct 22)' t, question_position, is_correct, selected_choice_id, correct_choice_id, explanation from public.get_attempt_result(:'aid');
+select 'set progress (expect total 2, cleared 1)' t, * from public.get_set_progress('20000000-0000-0000-0000-000000000001');
+select 'paid set progress (expect total 2, cleared 1: Q2 is shared)' t, * from public.get_set_progress('20000000-0000-0000-0000-000000000002');
 select 'review' t, public.get_review_questions();
-select 'restart skips cleared Q2' t, public.start_attempt('20000000-0000-0000-0000-000000000001');
 select 'review attempt' t, public.start_attempt(null, 'review');
+select public.start_attempt('20000000-0000-0000-0000-000000000001') as att3 \gset
+select 'restart skips cleared Q2 (expect planned 1, skipped 1)' t, :'att3';
+select (:'att3'::jsonb->>'attempt_id') as aid3 \gset
+\echo '--- EXPECT question_not_in_attempt (cleared Q2 was skipped)'
+savepoint g3; select public.submit_answer(:'aid3', '30000000-0000-0000-0000-000000000002', '40000000-0000-0000-0000-000000000022'); rollback to g3;
+select public.submit_answer(:'aid3', '30000000-0000-0000-0000-000000000001', '40000000-0000-0000-0000-000000000011');
+\echo '--- EXPECT no_questions (all cleared)'
+savepoint h2; select public.start_attempt('20000000-0000-0000-0000-000000000001'); rollback to h2;
+\echo '--- EXPECT no_questions (nothing to review)'
+savepoint h3; select public.start_attempt(null, 'review'); rollback to h3;
+select 'attempts (expect 3: none created on no_questions)' t, count(*) from public.attempts;
 \echo '--- EXPECT unsupported_mode'
 savepoint h; select public.start_attempt('20000000-0000-0000-0000-000000000001','exam'); rollback to h;
 select 'proximity (expect 2)' t, public.category_proximity((select id from public.categories where path='language/english/vocabulary'),(select id from public.categories where path='language/english'));
@@ -124,7 +144,7 @@ reset role;
 
 update public.subscriptions set plan_key='pro' where user_id='00000000-0000-0000-0000-00000000000b';
 set local role authenticated;
-select 'pro sees questions (expect 3)' t, count(*) from public.questions;
+select 'pro sees questions (expect 3)' t, count(*) from public.questions where id::text like '30000000-%';
 reset role;
 
 update public.profiles set status='suspended' where id='00000000-0000-0000-0000-00000000000b';
@@ -134,7 +154,10 @@ select 'suspended answers (expect 0)' t, count(*) from public.answers;
 savepoint k; select public.start_attempt('20000000-0000-0000-0000-000000000001'); rollback to k;
 
 select set_config('request.jwt.claims','{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}',true) \g /dev/null
-select 'admin sees questions (expect 4)' t, count(*) from public.questions;
+select 'admin sees questions (expect 4)' t, count(*) from public.questions where id::text like '30000000-%';
+select 'admin sees others attempt_questions (expect 0)' t, count(*) from public.attempt_questions;
+\echo '--- EXPECT attempt_not_found (other user)'
+savepoint l; select * from public.get_attempt_result(:'aid'); rollback to l;
 insert into public.structure_types (key, label_ja) values ('test_type','テスト');
 reset role;
 
@@ -146,5 +169,6 @@ select path, depth from public.categories where depth>1;
 savepoint n; update public.user_settings set timezone='Mars/Base'; rollback to n;
 \echo '--- auth user delete cascades'
 delete from auth.users where id='00000000-0000-0000-0000-00000000000b';
-select count(*) remaining_answers from public.answers;
+select 'remaining answers of deleted user (expect 0)' t, count(*) from public.answers where user_id = '00000000-0000-0000-0000-00000000000b';
+select 'remaining attempt_questions of deleted user (expect 0)' t, count(*) from public.attempt_questions where user_id = '00000000-0000-0000-0000-00000000000b';
 rollback;
