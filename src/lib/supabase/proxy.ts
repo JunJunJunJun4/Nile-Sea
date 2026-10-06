@@ -31,9 +31,48 @@ export async function updateSession(request: NextRequest) {
 
   // createServerClient と getClaims() の間に処理を挟まないこと。
   // getClaims() が期限切れのトークンを更新し、Cookie を書き戻す。
-  await supabase.auth.getClaims();
+  const { data } = await supabase.auth.getClaims();
+  const isLoggedIn = Boolean(data?.claims);
+
+  const { pathname } = request.nextUrl;
+  if (!isLoggedIn && isProtectedPath(pathname)) {
+    return redirectWithSession(request, supabaseResponse, "/login");
+  }
+  if (isLoggedIn && isGuestOnlyPath(pathname)) {
+    return redirectWithSession(request, supabaseResponse, "/dashboard");
+  }
 
   // supabaseResponse をそのまま返すこと。新しいレスポンスを作る場合は
   // supabaseResponse の Cookie をコピーしないとセッションが失われる。
   return supabaseResponse;
+}
+
+function isProtectedPath(pathname: string) {
+  return pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+}
+
+function isGuestOnlyPath(pathname: string) {
+  return pathname === "/login" || pathname === "/signup";
+}
+
+// 更新されたセッション Cookie とヘッダーを引き継いだままリダイレクトする。
+function redirectWithSession(
+  request: NextRequest,
+  supabaseResponse: NextResponse,
+  pathname: string,
+) {
+  const url = request.nextUrl.clone();
+  url.pathname = pathname;
+  url.search = "";
+
+  const response = NextResponse.redirect(url);
+  supabaseResponse.cookies
+    .getAll()
+    .forEach((cookie) => response.cookies.set(cookie));
+  // setAll で付与されたキャッシュ抑止ヘッダーのみ。x-middleware-* はコピーしない。
+  ["cache-control", "expires", "pragma"].forEach((key) => {
+    const value = supabaseResponse.headers.get(key);
+    if (value) response.headers.set(key, value);
+  });
+  return response;
 }

@@ -1,0 +1,30 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+
+import { logout } from "@/app/auth/actions";
+import { Button } from "@/components/ui/button";
+import { createClient } from "@/lib/supabase/server";
+
+export const metadata: Metadata = { title: "ダッシュボード" };
+
+export default async function DashboardPage() {
+  // proxy でもリダイレクトしているが、ページ側でも必ず認証を確認する。
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims) {
+    redirect("/login");
+  }
+
+  return (
+    <main className="flex flex-1 flex-col items-center justify-center gap-4 p-4">
+      <p className="text-sm">
+        ログイン中：<span className="font-medium">{data.claims.email}</span>
+      </p>
+      <form action={logout}>
+        <Button type="submit" variant="outline">
+          ログアウト
+        </Button>
+      </form>
+    </main>
+  );
+}
