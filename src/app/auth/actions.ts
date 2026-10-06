@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
@@ -16,6 +17,20 @@ function toFormValues(formData: FormData) {
     email: String(formData.get("email") ?? ""),
     password: String(formData.get("password") ?? ""),
   };
+}
+
+// ローカル・Vercel のプレビュー・本番のどれでも、アクセス中のオリジンを返す。
+// Server Action は Origin と Host（または X-Forwarded-Host）が一致しないと
+// Next.js に拒否されるので、ここで読むホストは実際にアクセスされたものになる。
+async function getRequestOrigin() {
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host");
+  const proto =
+    headersList.get("x-forwarded-proto")?.split(",")[0].trim() ??
+    (host?.startsWith("localhost") || host?.startsWith("127.0.0.1")
+      ? "http"
+      : "https");
+  return `${proto}://${host}`;
 }
 
 function toErrorMessage(code: string | undefined) {
@@ -80,7 +95,12 @@ export async function signup(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp(parsed.data);
+  const { data, error } = await supabase.auth.signUp({
+    ...parsed.data,
+    options: {
+      emailRedirectTo: `${await getRequestOrigin()}/auth/callback?next=/dashboard`,
+    },
+  });
   if (error) {
     return {
       status: "error",

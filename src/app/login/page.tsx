@@ -9,7 +9,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { error } = await searchParams;
   const initialMessage =
     error === "confirm"
-      ? "メールアドレスの確認に失敗しました。リンクの有効期限が切れている可能性があります。"
+      ? "確認リンクを開けませんでした。メールアドレスの確認は完了している場合があるので、ログインをお試しください。"
       : undefined;
 
   return (
