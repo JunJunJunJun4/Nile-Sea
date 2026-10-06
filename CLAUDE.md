@@ -22,6 +22,7 @@ npm is the package manager (`package-lock.json`). Node 24.21.0 is pinned via Vol
 - `npm run start`: serve the production build
 - `npm run lint`: ESLint 9 flat config (`eslint.config.mjs`, extends `eslint-config-next` core-web-vitals + typescript)
 - `npx tsc --noEmit`: type-check on its own
+- DB smoke test (after `supabase db reset`): `Get-Content -Raw supabase/tests/db_smoke_test.sql | docker exec -i supabase_db_nile-sea psql -U postgres -q`. It rolls back at the end; check that each `--- EXPECT xxx` line is followed by error `xxx` and that `(expect n)` counts match.
 
 No test framework is set up yet.
 

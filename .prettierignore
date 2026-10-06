@@ -9,6 +9,11 @@ coverage
 
 # generated
 next-env.d.ts
+src/types/database.ts
+supabase/.temp/
+
+# docs
+docs/
 *.tsbuildinfo
 
 # lock files
