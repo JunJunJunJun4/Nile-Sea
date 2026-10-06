@@ -4,7 +4,10 @@ import { CircleCheckIcon, CircleXIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { submitAnswer, type SubmitAnswerResult } from "@/app/attempts/actions";
+import {
+  submitAnswer,
+  type SubmitAnswerResult,
+} from "@/app/(app)/attempts/actions";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

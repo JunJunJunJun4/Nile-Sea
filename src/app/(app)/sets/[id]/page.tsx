@@ -24,6 +24,11 @@ import {
   idSchema,
   requireUser,
 } from "@/lib/learning/data";
+import {
+  dedupeScopeOptions,
+  describeSettings,
+  toLearningSettings,
+} from "@/lib/settings";
 
 import { StartAttemptForm } from "./start-attempt-form";
 
@@ -40,6 +45,7 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
     { data: set, error },
     { data: progress, error: progressError },
     { data: openAttempt },
+    { data: settingsRow },
     canAccessAllSets,
     categoryLabel,
   ] = await Promise.all([
@@ -63,6 +69,12 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
       .order("started_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    // クリア済みは保存せず、この設定で get_set_progress が判定する。判定の前提として画面に添える。
+    supabase
+      .from("user_settings")
+      .select("dedupe_scope, clear_mode, clear_threshold")
+      .eq("user_id", userId)
+      .maybeSingle(),
     getCanAccessAllSets(supabase),
     getCategoryLabels(supabase),
   ]);
@@ -74,6 +86,7 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
   const category = categoryLabel(set.categories?.path);
   const total = progress?.total_count ?? set.question_count;
   const cleared = progress?.cleared_count ?? 0;
+  const settings = settingsRow ? toLearningSettings(settingsRow) : null;
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
@@ -113,6 +126,11 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
               <dd className="text-lg font-semibold tabular-nums">
                 {cleared} / {total}
               </dd>
+              {settings && (
+                <dd className="text-xs text-muted-foreground">
+                  （{dedupeScopeOptions[settings.dedupeScope].badge}）
+                </dd>
+              )}
             </div>
           </dl>
 
@@ -121,10 +139,23 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
               進捗を読み込めませんでした。
             </p>
           ) : (
-            <Progress value={total > 0 ? (cleared / total) * 100 : 0}>
-              <ProgressLabel>進捗</ProgressLabel>
-              <ProgressValue />
-            </Progress>
+            <div className="flex flex-col gap-2">
+              <Progress value={total > 0 ? (cleared / total) * 100 : 0}>
+                <ProgressLabel>進捗</ProgressLabel>
+                <ProgressValue />
+              </Progress>
+              {settings && (
+                <p className="text-sm text-muted-foreground">
+                  {describeSettings(settings)}。
+                  <Link
+                    href="/settings"
+                    className="ml-1 whitespace-nowrap text-foreground underline underline-offset-4"
+                  >
+                    設定を変更
+                  </Link>
+                </p>
+              )}
+            </div>
           )}
 
           {locked ? (

@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 
-import { startAttempt, type StartAttemptState } from "@/app/sets/actions";
+import { startAttempt, type StartAttemptState } from "@/app/(app)/sets/actions";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

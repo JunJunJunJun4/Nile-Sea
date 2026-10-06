@@ -1,10 +1,9 @@
-import { BookOpenIcon } from "lucide-react";
+import { BookOpenIcon, SettingsIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { logout } from "@/app/auth/actions";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "ダッシュボード" };
@@ -29,11 +28,17 @@ export default async function DashboardPage() {
         <BookOpenIcon data-icon="inline-start" />
         問題集を解く
       </Link>
-      <form action={logout}>
-        <Button type="submit" variant="outline">
-          ログアウト
-        </Button>
-      </form>
+      <Link
+        href="/settings"
+        className={buttonVariants({
+          variant: "outline",
+          size: "lg",
+          className: "w-full max-w-xs",
+        })}
+      >
+        <SettingsIcon data-icon="inline-start" />
+        学習の設定
+      </Link>
     </main>
   );
 }

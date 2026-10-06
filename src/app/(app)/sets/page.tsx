@@ -40,15 +40,7 @@ export default async function SetsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
-      <div className="flex flex-col gap-1">
-        <Link
-          href="/dashboard"
-          className="text-sm text-muted-foreground underline-offset-4 hover:underline"
-        >
-          ← ダッシュボード
-        </Link>
-        <h1 className="text-xl font-semibold">問題集</h1>
-      </div>
+      <h1 className="text-xl font-semibold">問題集</h1>
 
       {sets.length === 0 ? (
         <p className="text-sm text-muted-foreground">
