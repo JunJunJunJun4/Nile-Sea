@@ -29,6 +29,46 @@ export async function getCanAccessAllSets(supabase: SupabaseClient) {
   return data?.plans?.can_access_all_sets ?? false;
 }
 
+// 現在のプランの名前と1日の上限（subscriptions がなければ free として扱う）。daily_question_limit が NULL なら無制限。
+export async function getCurrentPlan(supabase: SupabaseClient) {
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("plans(key, name, daily_question_limit)")
+    .maybeSingle();
+  if (subscription?.plans) return subscription.plans;
+
+  const { data: free } = await supabase
+    .from("plans")
+    .select("key, name, daily_question_limit")
+    .eq("key", "free")
+    .maybeSingle();
+  return free;
+}
+
+// 本人の daily_activity をすべて読む（1日1行）。API の1回の上限（max_rows）を超えても読めるよう、区切って読む。
+export async function getDailyActivities(supabase: SupabaseClient) {
+  const pageSize = 1000;
+  const rows: {
+    activity_date: string;
+    answered_count: number;
+    correct_count: number;
+    study_seconds: number;
+  }[] = [];
+
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("daily_activity")
+      .select("activity_date, answered_count, correct_count, study_seconds")
+      .order("activity_date")
+      .range(from, from + pageSize - 1);
+    if (error) {
+      throw new Error(`学習記録の読み込みに失敗しました: ${error.message}`);
+    }
+    rows.push(...data);
+    if (data.length < pageSize) return rows;
+  }
+}
+
 export function canSolveSet(
   set: { is_free: boolean; owner_id: string | null },
   userId: string,
@@ -52,6 +92,15 @@ export async function getCategoryLabels(supabase: SupabaseClient) {
   };
 }
 
+// 挑戦の画面に出す問題集名。問題集を指定しない復習（問題集をまたぐ復習）では question_set_id が NULL。
+export function attemptSetTitle(attempt: {
+  mode: string;
+  question_sets: { title: string } | null;
+}) {
+  if (attempt.question_sets) return attempt.question_sets.title;
+  return attempt.mode === "review" ? "すべての問題集" : "問題集";
+}
+
 // 挑戦の状態と、次に出題する問題（出題リストのうち未回答で、出題順が最初のもの）をサーバー側で決める。
 export async function getAttemptState(
   supabase: SupabaseClient,
@@ -61,7 +110,7 @@ export async function getAttemptState(
     supabase
       .from("attempts")
       .select(
-        "id, question_set_id, planned_count, correct_count, score, completed_at, question_sets(title)",
+        "id, question_set_id, mode, planned_count, correct_count, score, completed_at, question_sets(title)",
       )
       .eq("id", attemptId)
       .maybeSingle(),

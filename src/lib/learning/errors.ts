@@ -27,6 +27,8 @@ const messages: Record<string, string> = {
     "この問題の選択肢ではありません。ページを再読み込みしてください。",
   unsupported_format: "この形式の問題には、まだ対応していません。",
   unsupported_mode: "この出題モードには、まだ対応していません。",
+  question_set_required: "問題集を選んでください。",
+  no_questions: "出題できる問題がありません。",
   user_settings_not_found:
     "ユーザー設定が見つかりません。時間をおいて再度お試しください。",
 };

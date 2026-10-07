@@ -1,10 +1,17 @@
+import { RotateCcwIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Progress, ProgressLabel } from "@/components/ui/progress";
-import { getAttemptState, idSchema, requireUser } from "@/lib/learning/data";
+import {
+  attemptSetTitle,
+  getAttemptState,
+  idSchema,
+  requireUser,
+} from "@/lib/learning/data";
 
 import { QuestionForm } from "./question-form";
 
@@ -24,9 +31,13 @@ export default async function AttemptPage({
   const { attempt, answeredCount, nextQuestionId } = state;
   if (attempt.completed_at) redirect(`/attempts/${attemptId}/result`);
 
-  const backHref = attempt.question_set_id
-    ? `/sets/${attempt.question_set_id}`
-    : "/sets";
+  // 復習の挑戦は復習ページに戻す。
+  const isReview = attempt.mode === "review";
+  const backHref = isReview
+    ? "/review"
+    : attempt.question_set_id
+      ? `/sets/${attempt.question_set_id}`
+      : "/sets";
 
   // question_choices は is_correct を読めないので、列を指定して読む。
   const [{ data: question }, { data: choices }] = nextQuestionId
@@ -55,7 +66,7 @@ export default async function AttemptPage({
           href={backHref}
           className={buttonVariants({ size: "lg", className: "w-full" })}
         >
-          問題集に戻る
+          {isReview ? "復習ページに戻る" : "問題集に戻る"}
         </Link>
       </main>
     );
@@ -71,8 +82,17 @@ export default async function AttemptPage({
           href={backHref}
           className="text-sm text-muted-foreground underline-offset-4 hover:underline"
         >
-          ← {attempt.question_sets?.title ?? "問題集"}
+          ← {isReview ? "復習" : attemptSetTitle(attempt)}
         </Link>
+        {isReview && (
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+            <Badge>
+              <RotateCcwIcon data-icon="inline-start" />
+              復習
+            </Badge>
+            {attemptSetTitle(attempt)}の間違えた問題
+          </p>
+        )}
         <Progress value={(answeredCount / total) * 100}>
           <ProgressLabel>
             問題 {current} / {total}

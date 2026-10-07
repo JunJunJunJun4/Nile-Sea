@@ -1,4 +1,4 @@
-import { CircleCheckIcon } from "lucide-react";
+import { CircleCheckIcon, RotateCcwIcon } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { idSchema, requireUser } from "@/lib/learning/data";
+import { attemptSetTitle, idSchema, requireUser } from "@/lib/learning/data";
 import { toLearningErrorMessage } from "@/lib/learning/errors";
 
 export const metadata: Metadata = { title: "結果" };
@@ -30,7 +30,7 @@ export default async function AttemptResultPage({
   const { data: attempt, error: attemptError } = await supabase
     .from("attempts")
     .select(
-      "id, question_set_id, planned_count, correct_count, score, completed_at, question_sets(title)",
+      "id, question_set_id, mode, planned_count, correct_count, score, completed_at, question_sets(title)",
     )
     .eq("id", attemptId)
     .maybeSingle();
@@ -49,19 +49,29 @@ export default async function AttemptResultPage({
   const correct = attempt.correct_count;
   const rate = Math.round(Number(attempt.score ?? 0));
   const mistakes = (rows ?? []).filter((row) => row.is_correct === false);
-  const retryHref = attempt.question_set_id
-    ? `/sets/${attempt.question_set_id}`
-    : "/sets";
+  // 復習の挑戦は、復習ページに戻して残りの対象から始め直す。
+  const isReview = attempt.mode === "review";
+  const retryHref = isReview
+    ? "/review"
+    : attempt.question_set_id
+      ? `/sets/${attempt.question_set_id}`
+      : "/sets";
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
       <Card>
         <CardHeader>
-          <CardDescription>
-            {attempt.question_sets?.title ?? "問題集"}
+          <CardDescription className="flex flex-wrap items-center gap-2">
+            {isReview && (
+              <Badge>
+                <RotateCcwIcon data-icon="inline-start" />
+                復習
+              </Badge>
+            )}
+            {attemptSetTitle(attempt)}
           </CardDescription>
           <CardTitle className="text-lg">
-            <h1>結果</h1>
+            <h1>{isReview ? "復習の結果" : "結果"}</h1>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -81,6 +91,11 @@ export default async function AttemptResultPage({
               <dd className="text-2xl font-semibold tabular-nums">{rate}%</dd>
             </div>
           </dl>
+          {isReview && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              正解してクリアの条件を満たした問題は、次の復習から外れます。
+            </p>
+          )}
         </CardContent>
       </Card>
 

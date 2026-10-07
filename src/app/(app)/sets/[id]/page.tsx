@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { StartReviewForm } from "@/app/(app)/review/start-review-form";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import {
@@ -46,6 +47,7 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
     { data: progress, error: progressError },
     { data: openAttempt },
     { data: settingsRow },
+    { data: reviewIds },
     canAccessAllSets,
     categoryLabel,
   ] = await Promise.all([
@@ -75,6 +77,8 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
       .select("dedupe_scope, clear_mode, clear_threshold")
       .eq("user_id", userId)
       .maybeSingle(),
+    // 復習の対象（不正解があり未クリアの問題）。解けない問題集ではエラーになるので、そのときはボタンを出さない。
+    supabase.rpc("get_review_questions", { p_question_set_id: setId }),
     getCanAccessAllSets(supabase),
     getCategoryLabels(supabase),
   ]);
@@ -87,6 +91,7 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
   const total = progress?.total_count ?? set.question_count;
   const cleared = progress?.cleared_count ?? 0;
   const settings = settingsRow ? toLearningSettings(settingsRow) : null;
+  const reviewCount = reviewIds?.length ?? 0;
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-4 p-4">
@@ -189,6 +194,13 @@ export default async function SetPage({ params }: PageProps<"/sets/[id]">) {
                 </Link>
               )}
               <StartAttemptForm questionSetId={set.id} />
+              {reviewCount > 0 && (
+                <StartReviewForm
+                  questionSetId={set.id}
+                  label={`間違えた問題を復習する（${reviewCount}問）`}
+                  variant="outline"
+                />
+              )}
             </div>
           )}
         </CardContent>

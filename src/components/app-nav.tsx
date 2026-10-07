@@ -1,15 +1,21 @@
 "use client";
 
-import { BookOpenIcon, HouseIcon, SettingsIcon } from "lucide-react";
+import {
+  BookOpenIcon,
+  HouseIcon,
+  RotateCcwIcon,
+  SettingsIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 
 const items = [
-  { href: "/dashboard", label: "ダッシュボード", icon: HouseIcon, match: [] },
+  { href: "/dashboard", label: "学習記録", icon: HouseIcon, match: [] },
   // 挑戦中・結果の画面も「問題集」の中として扱う。
   { href: "/sets", label: "問題集", icon: BookOpenIcon, match: ["/attempts"] },
+  { href: "/review", label: "復習", icon: RotateCcwIcon, match: [] },
   { href: "/settings", label: "設定", icon: SettingsIcon, match: [] },
 ];
 
@@ -24,7 +30,7 @@ export function AppNav() {
 
   return (
     <nav aria-label="メインメニュー">
-      <ul className="grid grid-cols-3 sm:flex sm:gap-1">
+      <ul className="grid grid-cols-4 sm:flex sm:gap-1">
         {items.map(({ href, label, icon: Icon, match }) => {
           const active = isActive(pathname, [href, ...match]);
           return (
