@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+
+
+## DB設計書
+https://docs.google.com/spreadsheets/d/195Q1ioScssBIkghob0_wJBusalsgHKS1E6TZKQ-lpFA/edit?gid=622819616#gid=622819616
+
+## ER図
+https://drive.google.com/file/d/1XMr0iGjk-rmHATdsAZRymzaHOjNt33fQ/view?usp=sharing
+
 ## Getting Started
 
 First, run the development server:
