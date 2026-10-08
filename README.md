@@ -1,6 +1,6 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 ## アイコン
-
+https://github.com/JunJunJunJun4/Nile-Sea/issues/2#issue-5760941120
 
 ## アプリの特徴
 知っていることは、もう解かなくていい。
